@@ -27,7 +27,6 @@ class metasurface:
         
         self.ser = serial.Serial(PORT, BAUD)
         time.sleep(2)  
-        # self.ser.timeout = 1
         
         self.set_config([False]*96)
         

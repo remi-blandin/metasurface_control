@@ -51,12 +51,18 @@ class metasurface:
         
 #- - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - #
 
-    def plot_config(self):
+    def plot_config(self, fig=None, ax=None):
         
         conf = np.array(self.config).reshape((8, 12))
         
-        plt.imshow(conf)
+        if (fig == None) or (ax == None):        
+            fig = plt.figure()    
+            ax = fig.add_subplot(111)
+        
+        ax.imshow(conf)
         plt.show()
+        
+        return fig, ax
         
 #- - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - #
 

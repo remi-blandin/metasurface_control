@@ -28,20 +28,21 @@ class metasurface:
         self.ser = serial.Serial(PORT, BAUD)
         time.sleep(2)  
         
-        self.set_config([False]*96)
+        self.nb_cells = 96
+        self.set_config([False] * self.nb_cells)
         
 #- - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - #
 
     def set_config(self, config):
         
-        if len(config) != 96:
+        if len(config) != self.nb_cells:
             raise ValueError("Need 96 states")
             
         # reorder the elements of the configuration according to the cell 
         # to pin map
         self.config = config
 
-        config_pin_ordered = [False]*96
+        config_pin_ordered = [False] * self.nb_cells
         cnt = 0
         for i in self.idx_map:
             config_pin_ordered[i] = self.config[cnt]
@@ -66,7 +67,8 @@ class metasurface:
         
 #- - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - #
 
-    def send_configuration(self, config=None, time_sleep=0.1, print_messages = False):
+    def send_configuration(self, config=None, time_sleep=0.1, 
+                           print_messages = False):
         
         if config is not None:
             self.set_config(config)
@@ -95,3 +97,39 @@ class metasurface:
         line = self.ser.read_until()
         if print_messages:
             print(line.decode().strip())
+
+#- - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - #
+
+    def optimize(self, cost_function, device, nb_repeat=1, print_cost=True):
+        
+        # optimize the metasurface configuration to maximize the cost returned
+        # by the cost function given as argument
+        
+        config = [False] * self.nb_cells
+        self.send_configuration(config)
+            
+        cost = np.zeros(self.nb_cells * nb_repeat + 1)
+        cost[0] = cost_function(device)
+        if print_cost:
+            print("It 0, cost: " + str(cost[0]))
+        max_cost = cost[0]
+
+        for r in range(0, nb_repeat):
+            for idx in range(0,self.nb_cells):
+                
+                idx_it = r * self.nb_cells + idx + 1
+                
+                config[idx] = not(config[idx])
+                self.send_configuration(config)
+                
+                cost[idx_it] = cost_function(device)
+                if print_cost:
+                    print("It " + str(idx_it) + \
+                          ", cost: " + \
+                              str(cost[idx_it]))
+                
+                if cost[idx_it] < max_cost:
+                    config[idx] = not(config[idx])
+                    self.send_configuration(config)
+                else:
+                    max_cost = cost[idx_it]

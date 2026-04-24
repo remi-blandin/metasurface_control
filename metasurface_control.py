@@ -97,10 +97,18 @@ class metasurface:
         line = self.ser.read_until()
         if print_messages:
             print(line.decode().strip())
+            
+#- - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - #
+
+    def send_uniform_config(self):
+        
+        config = [False] * self.nb_cells
+        self.send_configuration(config)
 
 #- - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - #
 
-    def optimize(self, cost_function, device, nb_repeat=1, print_cost=True):
+    def optimize(self, cost_function, device, nb_repeat=1, print_cost=True,
+        plot_progression=True):
         
         # optimize the metasurface configuration to maximize the cost returned
         # by the cost function given as argument
@@ -133,3 +141,11 @@ class metasurface:
                     self.send_configuration(config)
                 else:
                     max_cost = cost[idx_it]
+
+        if plot_progression:
+            plt.figure()
+            plt.plot(cost)
+            plt.xlabel('Iteration number')
+            plt.ylabel('Cost function')
+            plt.savefig('cost_function.png')
+            plt.show()

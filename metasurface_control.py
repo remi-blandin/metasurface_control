@@ -1,6 +1,7 @@
 import serial
 import time
 import numpy as np
+import random
 import matplotlib.pyplot as plt
 
 __all__ = ["metasurface"]
@@ -103,6 +104,13 @@ class metasurface:
     def send_uniform_config(self):
         
         config = [False] * self.nb_cells
+        self.send_configuration(config)
+        
+#- - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - #
+
+    def send_random_config(self):
+        
+        config = [random.choice([True, False]) for _ in range(self.nb_cells)]
         self.send_configuration(config)
 
 #- - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - #

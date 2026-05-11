@@ -86,6 +86,8 @@ class metasurface:
 
             bytes_to_send.append(byte)
 
+        start = time.perf_counter()
+        
         self.ser.write(bytearray(bytes_to_send))
         
         if print_messages:
@@ -99,6 +101,10 @@ class metasurface:
         if print_messages:
             print(line.decode().strip())
             
+        end = time.perf_counter()
+        
+        return(end - start)
+            
 #- - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - #
 
     def send_uniform_config(self):
@@ -111,7 +117,7 @@ class metasurface:
     def send_random_config(self):
         
         config = [random.choice([True, False]) for _ in range(self.nb_cells)]
-        self.send_configuration(config)
+        return(self.send_configuration(config))
 
 #- - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - #
 

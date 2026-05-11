@@ -68,8 +68,7 @@ class metasurface:
         
 #- - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - #
 
-    def send_configuration(self, config=None, time_sleep=0., 
-                           print_messages = False):
+    def send_configuration(self, config=None, print_messages = False):
         
         if config is not None:
             self.set_config(config)
@@ -90,13 +89,6 @@ class metasurface:
         
         self.ser.write(bytearray(bytes_to_send))
         
-        if print_messages:
-            print("Bytes sent: " + str(bytes_to_send))
-        line = self.ser.read_until()
-        if print_messages:
-            print(line.decode().strip())
-        
-        time.sleep(time_sleep)
         line = self.ser.read_until()
         if print_messages:
             print(line.decode().strip())
@@ -114,10 +106,10 @@ class metasurface:
         
 #- - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - #
 
-    def send_random_config(self):
+    def send_random_config(self, print_messages=False):
         
         config = [random.choice([True, False]) for _ in range(self.nb_cells)]
-        return(self.send_configuration(config))
+        return(self.send_configuration(config, print_messages=print_messages))
 
 #- - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - #
 

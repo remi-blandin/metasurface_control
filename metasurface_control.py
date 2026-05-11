@@ -68,7 +68,7 @@ class metasurface:
         
 #- - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - #
 
-    def send_configuration(self, config=None, time_sleep=0.1, 
+    def send_configuration(self, config=None, time_sleep=0., 
                            print_messages = False):
         
         if config is not None:

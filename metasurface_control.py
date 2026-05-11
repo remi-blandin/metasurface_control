@@ -10,7 +10,7 @@ class metasurface:
     
     """A class to communicate with a metasurface easily"""
     
-    def __init__(self, PORT = "COM3", BAUD = 115200):
+    def __init__(self, PORT = "COM3", BAUD = 500000):
         
         self.PORT = PORT
         self.BAUD = BAUD
@@ -31,6 +31,7 @@ class metasurface:
         
         self.nb_cells = 96
         self.set_config([False] * self.nb_cells)
+        self.ser.reset_input_buffer()
         
 #- - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - #
 
@@ -89,9 +90,14 @@ class metasurface:
         
         self.ser.write(bytearray(bytes_to_send))
         
-        line = self.ser.read_until()
-        if print_messages:
-            print(line.decode().strip())
+        ack = self.ser.read(1)
+
+        if ack != b'\x06':
+            raise RuntimeError("Invalid ACK")
+        
+        # line = self.ser.read_until()
+        # if print_messages:
+        #     print(line.decode().strip())
             
         end = time.perf_counter()
         

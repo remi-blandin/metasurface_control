@@ -13,20 +13,18 @@ void setup()
   // Set A0 as output (PORTC0)
   DDRC |= (1 << 0);
 
-  Serial.begin(115200);   // faster baud
+  Serial.begin(500000);   // baud
 }
 
 void loop() {
 
   if(Serial.available() >= NUM_REG)
   {
-
-    for(int i=0;i<NUM_REG;i++){
-      registers[i] = Serial.read();
-    }
+    Serial.readBytes(registers, NUM_REG);
 
     writeRegisters();
-    Serial.println("");
+
+    Serial.write(0x06); // ACK byte
   }
 }
 
@@ -34,28 +32,27 @@ void writeRegisters()
 {
   for(int bit = 7; bit >= 0; bit--)
   {
-    uint8_t portDValue = 0;
-    uint8_t portBValue = 0;
+    uint8_t d = 0;
+    uint8_t b = 0;
 
-    // Registers 0-5 → pins 2-7 → PORTD
-    for(int r=0; r<6; r++)
-    {
-      if ((registers[r] >> bit) & 1)
-        portDValue |= (1 << (r + 2));
-    }
+    d |= ((registers[0] >> bit) & 1) << 2;
+    d |= ((registers[1] >> bit) & 1) << 3;
+    d |= ((registers[2] >> bit) & 1) << 4;
+    d |= ((registers[3] >> bit) & 1) << 5;
+    d |= ((registers[4] >> bit) & 1) << 6;
+    d |= ((registers[5] >> bit) & 1) << 7;
 
-    // Registers 6-11 → pins 8-13 → PORTB
-    for(int r=6; r<12; r++)
-    {
-      if ((registers[r] >> bit) & 1)
-        portBValue |= (1 << (r - 6));
-    }
+    b |= ((registers[6] >> bit) & 1) << 0;
+    b |= ((registers[7] >> bit) & 1) << 1;
+    b |= ((registers[8] >> bit) & 1) << 2;
+    b |= ((registers[9] >> bit) & 1) << 3;
+    b |= ((registers[10] >> bit) & 1) << 4;
+    b |= ((registers[11] >> bit) & 1) << 5;
 
-    PORTD = (PORTD & 0b00000011) | portDValue;
-    PORTB = (PORTB & 0b11000000) | portBValue;
+    PORTD = (PORTD & 0x03) | d;
+    PORTB = (PORTB & 0xC0) | b;
 
-    // Clock pulse on A0 (PORTC0)
-    PORTC |= (1 << 0);
-    PORTC &= ~(1 << 0);
+    PORTC |= 1;
+    PORTC &= ~1;
   }
 }

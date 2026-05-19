@@ -10,7 +10,7 @@ class metasurface:
     
     """A class to communicate with a metasurface easily"""
     
-    def __init__(self, PORT = "COM3", BAUD = 500000):
+    def __init__(self, PORT = "COM3", BAUD = 1000000):
         
         self.PORT = PORT
         self.BAUD = BAUD
@@ -90,14 +90,15 @@ class metasurface:
         
         self.ser.write(bytearray(bytes_to_send))
         
+        # line = self.ser.read_until()
+        # print(line.decode().strip())
+        
         ack = self.ser.read(1)
 
         if ack != b'\x06':
             raise RuntimeError("Invalid ACK")
-        
-        # line = self.ser.read_until()
-        # if print_messages:
-        #     print(line.decode().strip())
+            
+        # time.sleep(0.01)
             
         end = time.perf_counter()
         
@@ -105,10 +106,23 @@ class metasurface:
             
 #- - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - #
 
-    def send_uniform_config(self):
+    # /!\ This doesn't measure the time needed by the Arduino !
+    def measure_config_time(self):
         
-        config = [False] * self.nb_cells
-        self.send_configuration(config)
+        start = time.perf_counter_ns()
+        
+        self.send_uniform_config()
+        
+        end = time.perf_counter_ns()
+        
+        return(end - start)
+    
+#- - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - #
+
+    def send_uniform_config(self, state=False):
+        
+        config = [state] * self.nb_cells
+        return(self.send_configuration(config))
         
 #- - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - #
 

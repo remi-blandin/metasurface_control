@@ -41,9 +41,9 @@ void loop() {
 
     duration = micros() - start;
 
-    Serial.println(duration);
+    // Serial.println(duration);
 
-    // Serial.write(0x06); // ACK byte
+    Serial.write(0x06); // ACK byte
   }
 }
 

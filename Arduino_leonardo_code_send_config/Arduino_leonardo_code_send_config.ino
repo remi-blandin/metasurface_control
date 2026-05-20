@@ -38,9 +38,6 @@ void loop() {
     // track execution time
     start = micros();
 
-    // for(int i=0;i<NUM_REG;i++){ 
-    //   registers[i] = Serial.read(); 
-    // }
     registers[0] = Serial.read(); 
     registers[1] = Serial.read(); 
     registers[2] = Serial.read(); 

@@ -85,24 +85,13 @@ class metasurface:
                     byte |= (1 << (7-bit))
 
             bytes_to_send.append(byte)
-
-        start = time.perf_counter()
         
         self.ser.write(bytearray(bytes_to_send))
-        
-        # line = self.ser.read_until()
-        # print(line.decode().strip())
         
         ack = self.ser.read(1)
 
         if ack != b'\x06':
             raise RuntimeError("Invalid ACK")
-            
-        # time.sleep(0.01)
-            
-        end = time.perf_counter()
-        
-        return(end - start)
             
 #- - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - #
 

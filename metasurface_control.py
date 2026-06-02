@@ -92,19 +92,6 @@ class metasurface:
 
         if ack != b'\x06':
             raise RuntimeError("Invalid ACK")
-            
-#- - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - #
-
-    # /!\ This doesn't measure the time needed by the Arduino !
-    def measure_config_time(self):
-        
-        start = time.perf_counter_ns()
-        
-        self.send_uniform_config()
-        
-        end = time.perf_counter_ns()
-        
-        return(end - start)
     
 #- - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - #
 

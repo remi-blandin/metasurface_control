@@ -63,7 +63,7 @@ class metasurface:
             ax = fig.add_subplot(111)
         
         ax.imshow(conf)
-        plt.show()
+        plt.show(block=False)
         
         return fig, ax
         
@@ -106,7 +106,21 @@ class metasurface:
         
         config = [random.choice([True, False]) for _ in range(self.nb_cells)]
         return(self.send_configuration(config, print_messages=print_messages))
+        
+#- - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - #
 
+    def save_config(self, file_name):
+    
+        np.save(file_name, np.array(self.config))
+        
+#- - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - #
+
+    def set_config_from_file(self, file_name, print_messages=False):
+    
+        cfg = np.load(file_name)
+        config = list(cfg)
+        return(self.send_configuration(config, print_messages=print_messages))
+        
 #- - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - #
 
     def optimize(self, cost_function, device, nb_repeat=1, print_cost=True,
@@ -150,4 +164,4 @@ class metasurface:
             plt.xlabel('Iteration number')
             plt.ylabel('Cost function')
             plt.savefig('cost_function.png')
-            plt.show()
+            plt.show(block=False)

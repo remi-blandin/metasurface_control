@@ -2,6 +2,7 @@ import uhd
 import numpy as np
 import threading
 import queue
+import time
 
 __all__ = ["usrp"]
 
@@ -20,6 +21,18 @@ class usrp:
         self.center_freq = center_freq
         
         self.setup_usrp()
+        
+        # =========================
+        # RING BUFFER ADDITIONS
+        # =========================
+        
+        self.buffer_size = 2**18  # ~260k samples (adjust as needed)
+        self.rx_buffer = np.zeros(self.buffer_size, dtype=np.complex64)
+        self.write_idx = 0
+        self.rx_running = False
+        self.total_rx_samples = 0
+        self.last_meas_nb_rx_samples = 0
+        self.last_packet_time = 0.
         
 #- - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - #
 
@@ -48,6 +61,12 @@ class usrp:
             uhd.usrp.StreamArgs("fc32", "sc16")
         )
         
+#- - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - #
+
+    def get_time_now(self):
+    
+        return self.usrp.get_time_now().get_real_secs()
+
 #- - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - #
 
     def set_time_now(self):
@@ -197,39 +216,8 @@ class usrp:
         self.tx_thread.start()
         
 #- - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - #
-
-#    def start_rx(self):
-#    
-#        self.rx_running = True
-
-#        self.rx_buffer_len = 4096
-#        self.rx_buffer = np.zeros(self.rx_buffer_len, dtype=np.complex64)
-
-#        self.rx_queue = queue.LifoQueue()
-
-#        metadata = uhd.types.RXMetadata()
-
-#        # Start streaming immediately
-#        stream_cmd = uhd.types.StreamCMD(uhd.types.StreamMode.start_cont)
-#        stream_cmd.stream_now = True
-#        self.rx_streamer.issue_stream_cmd(stream_cmd)
-
-#        def rx_worker():
-#            while self.rx_running:
-#                num_rx = self.rx_streamer.recv(
-#                    self.rx_buffer, metadata, timeout=1.0
-#                )
-
-#                if num_rx > 0:
-#                    self.rx_queue.put(self.rx_buffer[:num_rx].copy())
-
-#        self.rx_thread = threading.Thread(target=rx_worker)
-#        self.rx_thread.start()
         
-    def start_rx(self):
-        self.rx_streamer = self.usrp.get_rx_stream(
-            uhd.usrp.StreamArgs("fc32", "sc16")
-        )
+    def start_rx_old(self):
 
         self.rx_buffer = np.zeros(8192, dtype=np.complex64)
         self.rx_metadata = uhd.types.RXMetadata()
@@ -237,6 +225,52 @@ class usrp:
         stream_cmd = uhd.types.StreamCMD(uhd.types.StreamMode.start_cont)
         stream_cmd.stream_now = True
         self.rx_streamer.issue_stream_cmd(stream_cmd)
+        
+        # Warm-up flush: discard a few recv() calls, NOT a sleep
+        for _ in range(10):
+            self.rx_streamer.recv(self.rx_buffer, self.rx_metadata, timeout=0.1)
+            
+#- - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - #
+
+    def start_rx(self, buffer_len=4096):
+    
+        self.rx_buffer_len = buffer_len
+        self.rx_metadata = uhd.types.RXMetadata()
+
+        stream_cmd = uhd.types.StreamCMD(uhd.types.StreamMode.start_cont)
+        stream_cmd.stream_now = True
+        self.rx_streamer.issue_stream_cmd(stream_cmd)
+
+        self.rx_running = True
+        self.rx_thread = threading.Thread(target=self._rx_loop, daemon=True)
+        self.rx_thread.start()
+        
+#- - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - #
+    
+    def _rx_loop(self):
+        tmp = np.empty(self.rx_buffer_len, dtype=np.complex64)
+        md = self.rx_metadata
+
+        while self.rx_running:
+            num_rx = self.rx_streamer.recv(tmp, md, timeout=0.1)
+            self.total_rx_samples += num_rx
+
+            if num_rx > 0:
+            
+                self.last_packet_time = md.time_spec.get_real_secs()
+            
+                wi = self.write_idx  # local copy (important)
+                end = wi + num_rx
+                
+                if end < self.buffer_size:
+                    self.rx_buffer[wi:end] = tmp[:num_rx]
+                else:
+                    first = self.buffer_size - wi
+                    self.rx_buffer[wi:] = tmp[:first]
+                    self.rx_buffer[:num_rx-first] = tmp[first:num_rx]
+
+                # single integer update (no lock)
+                self.write_idx = (wi + num_rx) % self.buffer_size
         
 #- - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - #
 
@@ -247,44 +281,80 @@ class usrp:
             )
             if num_rx == 0:
                 break
-
+                
 #- - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - #
-        
-#    def get_measurement(self, num_samples):
-#        samples = []
-
-#        while len(samples) < num_samples:
-#            chunk = self.rx_queue.get()
-#            samples.extend(chunk)
-
-#        samples = np.array(samples[:num_samples])
-
-#        return samples
-        
-    def get_measurement(self, num_samples):
+                
+    def get_measurement_old(self, num_samples):
         samples = np.zeros(num_samples, dtype=np.complex64)
-
-        # 🔑 discard old buffered data
+        # discard old buffered data
+        
+        start = time.perf_counter()
+        
         self.flush_rx()
-
+        
+        t1 = time.perf_counter()
+        
         received = 0
+        num_rx = self.rx_streamer.recv(
+            samples[received:], self.rx_metadata, timeout=1.0
+        )
+        print(f"Numrx {num_rx}")
+        
+        received = 0
+        calls = 0
         while received < num_samples:
             num_rx = self.rx_streamer.recv(
                 samples[received:], self.rx_metadata, timeout=1.0
             )
-
-            if num_rx > 0:
-                received += num_rx
-
-#        # Optional: remove edges
-#        samples = samples[1000:-1000]
-
-#        # Optional: phase normalization
-#        phase = np.angle(np.mean(samples))
-#        samples *= np.exp(-1j * phase)
-
+#            if num_rx > 0:
+            calls += 1
+            received += num_rx
+        print(f"{calls=}, {received=}")
+                
+        t2 = time.perf_counter()
+        
+        print(f"Time flush: {t1 - start} s")
+        print(f"Time receive: {t2 - t1}s")
+        
         return samples
         
+#- - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - #
+
+    def get_measurement(self, num_samples, from_time_now=True):
+    
+        if num_samples > self.buffer_size:
+            raise ValueError("Request exceeds ring buffer size")
+            
+        if from_time_now:
+            min_start_time = self.get_time_now()
+        else:
+            min_start_time = 0.
+            
+        while (self.last_packet_time < min_start_time) or \
+            (self.total_rx_samples - self.last_meas_nb_rx_samples < num_samples):
+#            print('loop')
+#            print(f"Time diff = {self.last_packet_time < min_start_time}")
+#            print(f"Nb smp diff = {self.total_rx_samples - self.last_meas_nb_rx_samples}")
+            self.last_meas_nb_rx_samples = self.total_rx_samples
+            time.sleep(0.0001)
+            
+#        print('Measurement extraction')
+#        print(f"Time diff = {self.last_packet_time < min_start_time}")
+#        print(f"Nb smp diff = {self.total_rx_samples - self.last_meas_nb_rx_samples}")
+            
+        self.last_meas_nb_rx_samples = self.total_rx_samples
+    
+        idx = self.write_idx
+
+        if idx >= num_samples:
+            return self.rx_buffer[idx-num_samples:idx].copy()
+
+        else:
+            return np.concatenate([
+                self.rx_buffer[self.buffer_size-(num_samples-idx):],
+                self.rx_buffer[:idx]
+            ])
+            
 #- - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - #
 
     def stop(self):
@@ -293,6 +363,8 @@ class usrp:
         self.rx_running = False
 
         self.tx_thread.join()
+        if hasattr(self, "rx_thread"):
+            self.rx_thread.join()
 
         # Stop RX stream
         stop_cmd = uhd.types.StreamCMD(uhd.types.StreamMode.stop_cont)

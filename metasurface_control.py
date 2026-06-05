@@ -25,6 +25,27 @@ class metasurface:
                         64,65,60,63,62,61,67,66,71,68,69,70,
                         73,72,75,74,77,76,79,78,81,80,83,82,
                         88,89,84,87,86,85,91,90,95,92,93,94]
+                        
+        self.idx_shift_next = np.array([
+                        [6, 7, 4, 5, 2, 3, 0, 1],
+                        [15, 16, 17, 14, 10, 11, 8, 9],
+                        [20, 23, 22, 21, 18, 19, 13, 12],
+                        [30, 31, 28, 29, 26, 27, 24, 25],
+                        [39, 40, 41, 38, 34, 35, 32, 33],
+                        [44, 47, 46, 45, 42, 43, 37, 36],
+                        [54, 55, 52, 53, 50, 51, 48, 49],
+                        [63, 64, 65, 62, 58, 59, 56, 57],
+                        [68, 71, 70, 69, 66, 67, 61, 60],
+                        [78, 79, 76, 77, 74, 75, 72, 73],
+                        [87, 88, 89, 86, 82, 83, 80, 81],
+                        [92, 95, 94, 93, 90, 91, 85, 84]
+        ])
+        
+        self.idx_shift_next_new = self.idx_shift_next[:,1:].flatten()
+        self.idx_shift_next_prev = self.idx_shift_next[:,:-1].flatten()
+        
+        self.idx_order_shift = np.fliplr(self.idx_shift_next).flatten()
+        self.idx_new = self.idx_shift_next[:, 0]
         
         self.ser = serial.Serial(PORT, BAUD)
         time.sleep(2)  
@@ -120,6 +141,25 @@ class metasurface:
         cfg = np.load(file_name)
         config = list(cfg)
         return(self.send_configuration(config, print_messages=print_messages))
+        
+#- - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - #
+
+    def intermediate_configs(self, config):
+    
+        # calculate in which order the elements are sent to the shift registers
+        order_shift_reg = np.reshape(config[self.idx_order_shift], (12, 8))
+        
+        configs_interm = np.array([[False]*9]*96)
+        configs_interm[:,0] = self.config
+        
+        for n in range(8):
+            # shift the indexes
+            configs_interm[self.idx_shift_next_new, n+1] = \
+                configs_interm[self.idx_shift_next_prev, n]
+                
+            configs_interm[self.idx_new, n+1] = order_shift_reg[:,n]
+            
+        return configs_interm
         
 #- - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - #
 

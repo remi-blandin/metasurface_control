@@ -1,8 +1,10 @@
 import serial
+import serial.tools.list_ports
 import time
 import numpy as np
 import random
 import matplotlib.pyplot as plt
+import sys
 
 __all__ = ["metasurface"]
 
@@ -10,9 +12,18 @@ class metasurface:
     
     """A class to communicate with a metasurface easily"""
     
-    def __init__(self, PORT = "COM3", BAUD = 1000000):
+    def __init__(self, PORT = None, BAUD = 1000000):
         
-        self.PORT = PORT
+        if PORT is None:
+            self.PORT = self.find_arduino_port()
+            if self.PORT is None:
+
+                sys.exit("Error: No Arduino found. \
+                         Check USB connection and try again.")
+                         
+        else: 
+            self.PORT = PORT
+        
         self.BAUD = BAUD
         
         # this is the mapping between the indexes of pins of the connector and 
@@ -47,13 +58,35 @@ class metasurface:
         self.idx_order_shift = np.fliplr(self.idx_shift_next).flatten()
         self.idx_new = self.idx_shift_next[:, 0]
         
-        self.ser = serial.Serial(PORT, BAUD)
+        self.ser = serial.Serial(self.PORT, BAUD)
         time.sleep(2)  
         
         self.nb_cells = 96
         self.set_config([False] * self.nb_cells)
         self.ser.reset_input_buffer()
         
+#- - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - #
+
+    def find_arduino_port(self):
+        """Auto-detect Arduino serial port."""
+        # Known Arduino USB vendor IDs
+        ARDUINO_HWIDS = [
+            "2341:",   # Arduino LLC
+            "1A86:",   # CH340 chip (common on cheap Arduino clones)
+            "0403:",   # FTDI chip (older Arduinos)
+            "10C4:",   # CP210x chip (some clones)
+        ]
+    
+        ports = serial.tools.list_ports.comports()
+        
+        for port in ports:
+            hwid = port.hwid.upper()
+            if any(vid in hwid for vid in ARDUINO_HWIDS):
+                print(f"Found Arduino on {port.device} — {port.description}")
+                return port.device
+    
+        return None
+
 #- - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - #
 
     def set_config(self, config):

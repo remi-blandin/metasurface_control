@@ -4,6 +4,7 @@ import time
 import numpy as np
 import random
 import matplotlib.pyplot as plt
+import matplotlib.colors as mcolors
 import sys
 
 __all__ = ["metasurface"]
@@ -177,7 +178,9 @@ class metasurface:
         
 #- - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - #
 
-    def intermediate_configs(self, config):
+    def intermediate_configs(self, config, plot=False):
+        
+        config = np.array(config)
     
         # calculate in which order the elements are sent to the shift registers
         order_shift_reg = np.reshape(config[self.idx_order_shift], (12, 8))
@@ -192,6 +195,34 @@ class metasurface:
                 
             configs_interm[self.idx_new, n+1] = order_shift_reg[:,n]
             
+        if plot:
+            
+            # --- Split into 9 column arrays and reshape each to (8, 12) ---
+            columns = [configs_interm[:, i].reshape(8, 12) for i in range(9)]
+            
+            titles = ["Initial config"] + [f"Step {i}" for i in range(1, 9)]
+            
+            # Colormap: background color for False, accent for True
+            cmap = mcolors.ListedColormap(["#e8e8e8", "#2d6a9f"])  # light grey / steel blue
+
+     
+            fig, axes = plt.subplots(3, 3, figsize=(8, 7))
+            fig.patch.set_facecolor("#f5f5f5")
+             
+            for ax, data, title in zip(axes.flat, columns, titles):
+                ax.imshow(data, cmap=cmap, interpolation="nearest", 
+                          vmin=0, vmax=1)
+                ax.set_title(title, fontsize=10, fontweight="bold", pad=6)
+                ax.axis("off")
+             
+            plt.suptitle("Boolean Array States", fontsize=13, 
+                         fontweight="bold", y=1.01)
+            plt.tight_layout()
+            # plt.savefig("bool_array_visualization.png", dpi=150, bbox_inches="tight",
+            # facecolor=fig.get_facecolor())
+
+            plt.show(block=False)
+
         return configs_interm
         
 #- - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - #

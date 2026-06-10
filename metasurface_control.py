@@ -206,14 +206,21 @@ class metasurface:
             cmap = mcolors.ListedColormap(["#e8e8e8", "#2d6a9f"])  # light grey / steel blue
 
      
-            fig, axes = plt.subplots(3, 3, figsize=(8, 7))
+            fig, axes = plt.subplots(3, 3, figsize=(10, 8))
             fig.patch.set_facecolor("#f5f5f5")
              
             for ax, data, title in zip(axes.flat, columns, titles):
                 ax.imshow(data, cmap=cmap, interpolation="nearest", 
                           vmin=0, vmax=1)
                 ax.set_title(title, fontsize=10, fontweight="bold", pad=6)
-                ax.axis("off")
+                
+                # Grid lines between cells
+                ax.set_xticks(np.arange(-0.5, data.shape[1], 1), minor=True)
+                ax.set_yticks(np.arange(-0.5, data.shape[0], 1), minor=True)
+                ax.grid(which="minor", color="black", linewidth=0.8)
+                ax.tick_params(which="both", bottom=False, left=False,
+                               labelbottom=False, labelleft=False)
+
              
             plt.suptitle("Boolean Array States", fontsize=13, 
                          fontweight="bold", y=1.01)

@@ -3,6 +3,7 @@ import numpy as np
 import threading
 import queue
 import time
+from scipy.signal import find_peaks
 
 __all__ = ["usrp"]
 
@@ -354,6 +355,179 @@ class usrp:
                 self.rx_buffer[self.buffer_size-(num_samples-idx):],
                 self.rx_buffer[:idx]
             ])
+            
+#- - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - #
+
+    def extract_steps(self, signal, window=10, var_threshold_factor=10.0, margin=30,
+        nb_steps = 8):
+    
+        """
+        Automatically locate the region of a signal that contains steps,
+        using a rolling variance detector.
+
+        The baseline noise variance is estimated from the flattest parts of the
+        signal. Samples whose local variance exceeds (baseline * var_threshold_factor)
+        are considered 'active'. The contiguous active region is returned with an
+        optional margin on each side.
+
+        Parameters
+        ----------
+        signal               : 1D array-like
+        window               : rolling variance window size (samples)
+        var_threshold_factor : how many times above baseline variance to trigger
+        margin               : extra samples to include on each side of the region
+
+        Returns
+        -------
+        start, end  : indices (inclusive) of the extracted region
+        roll_var    : the rolling variance array (for diagnostics)
+        breakpoints : indices corresponding to the changes of changes of step
+        steps       : start, end, mean and standard deviation of the steps
+        mean_line   : reconstructed signal
+        """
+        n = len(signal)
+        sig_real = np.real(signal)
+        sig_imag = np.imag(signal)
+
+        # Rolling variance via convolution (fast, no Python loop)
+        half = window // 2
+        roll_mean_real = np.convolve(sig_real, np.ones(window) / window, mode="same")
+        roll_var_real  = np.convolve((sig_real - roll_mean_real) ** 2, 
+            np.ones(window) / window, mode="same")
+        roll_mean_imag = np.convolve(sig_imag, np.ones(window) / window, mode="same")
+        roll_var_imag  = np.convolve((sig_imag - roll_mean_imag) ** 2, 
+            np.ones(window) / window, mode="same")
+        roll_var = roll_var_real + roll_var_imag
+        
+        # exclude start and end 
+        roll_var[0:window] = 0
+        roll_var[-window:] = 0
+
+        # Estimate baseline variance from the bottom 20% of roll_var values
+        # (avoids being biased by the active region)
+        baseline_var = np.percentile(roll_var, 20)
+
+        threshold = baseline_var * var_threshold_factor
+        
+        # -- Identify the steps ---------------------------------------------
+        
+        breakpoints, properties = find_peaks(
+            roll_var,
+            height=threshold,      # only peaks above threshold
+            distance=25,           # minimum spacing between peaks (samples)
+            prominence=threshold,  # ensures peaks are genuinely local maxima
+        )
+        
+        if breakpoints.size < nb_steps:
+            raise ValueError(
+                f"No active region found. "
+                f"Baseline var={baseline_var:.4f}, threshold={threshold:.4f}. "
+                f"Try lowering var_threshold_factor."
+            )
+        
+        # remove false detection and add missing changes
+        breakpoints = self.robust_periodic_event_detection(breakpoints, n)
+        
+        # add another breakpoint after the last one to take into account 
+        # the final state
+        breakpoints = np.append(breakpoints, breakpoints[-1] + margin)
+        
+        # -- Detect the active region --------------------------------------
+        start = max(0,     breakpoints[0] - margin)
+        end   = min(n - 1, breakpoints[-1] + margin)
+        
+        active = signal[start:end + 1]
+        signal = signal[start:end + 1]
+        n_act = len(signal)
+        breakpoints = breakpoints - start - 1
+        
+        edges = [0] + breakpoints
+        steps = []
+        for a, b in zip(edges[:-1], edges[1:]):
+            seg = signal[a:b]
+            steps.append({"start": a, "end": b, "mean": np.median(seg), 
+            "std": np.real(seg).std() + 1j * np.imag(seg).std(), "n": len(seg)})
+
+        mean_line = np.zeros(n_act, dtype = np.complex64)
+        for s in steps:
+            mean_line[s["start"]:s["end"]] = s["mean"]
+
+        return start, end, roll_var, breakpoints, steps, mean_line
+        
+#- - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - #
+
+    def robust_periodic_event_detection(self, detections, nb_samples, period=30):
+    
+        N_EVENTS = 8
+
+        MISS_PENALTY = 20
+        FALSE_POS_PENALTY = 5
+        MAX_MATCH_DIST = 5
+
+        best_cost = np.inf
+        best_grid = None
+        best_assignment = None
+
+        for T in range(period-3, period+3):
+
+            for det in detections:
+
+                for t0 in range(det - 5, det + 6):
+
+                    grid = t0 + np.arange(N_EVENTS) * T
+
+                    used = np.zeros(len(detections), dtype=bool)
+                    assignment = []
+
+                    cost = 0
+
+                    for g in grid:
+
+                        distances = np.abs(detections - g)
+                        idx = np.argmin(distances)
+
+                        if distances[idx] <= MAX_MATCH_DIST:
+                            cost += distances[idx]
+                            used[idx] = True
+                            assignment.append(("detected", detections[idx]))
+                        else:
+                            cost += MISS_PENALTY
+                            assignment.append(("missing", int(round(g))))
+
+                    cost += FALSE_POS_PENALTY * np.sum(~used)
+
+                    if cost < best_cost:
+                        best_cost = cost
+                        best_grid = grid
+                        best_assignment = assignment
+
+        # Build corrected sequence
+        corrected_events = []
+
+        for status, value in best_assignment:
+
+            corrected_events.append(int(value))
+
+        corrected_events = np.array(corrected_events)
+        
+        # check if the steps are cut
+        if corrected_events[-1] >= nb_samples:
+            raise ValueError("Error: step signal incomplete")
+
+        print("Corrected sequence:")
+        print(corrected_events)
+
+        print("\nOrigin:")
+        missing_event = False
+        for i, (status, value) in enumerate(best_assignment):
+            print(i, status, value)
+            if status == "missing":
+                missing_event = True
+                
+        if missing_event:
+            raise ValueError("Strict detection: missing step")
+        
+        return corrected_events
             
 #- - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - #
 

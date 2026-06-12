@@ -426,7 +426,7 @@ class usrp:
             )
         
         # remove false detection and add missing changes
-        breakpoints = self.robust_periodic_event_detection(breakpoints, n)
+#        breakpoints = self.robust_periodic_event_detection(breakpoints, n, N_EVENTS=nb_steps)
         
         # add another breakpoint after the last one to take into account 
         # the final state
@@ -456,10 +456,9 @@ class usrp:
         
 #- - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - #
 
-    def robust_periodic_event_detection(self, detections, nb_samples, period=30):
+    def robust_periodic_event_detection(self, detections, nb_samples, period=30, 
+        N_EVENTS=8):
     
-        N_EVENTS = 8
-
         MISS_PENALTY = 20
         FALSE_POS_PENALTY = 5
         MAX_MATCH_DIST = 5

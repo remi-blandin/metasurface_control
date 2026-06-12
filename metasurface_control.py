@@ -87,6 +87,20 @@ class metasurface:
                 return port.device
     
         return None
+        
+#- - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - #
+
+    def check_configs_format(self, configs):
+    
+        """Check if the configurations are placed in a list, and if not correct it"""
+        
+        if not isinstance(configs, list):
+            if isinstance(configs, np.ndarray) and configs.shape == (96,):
+                configs = [configs]
+            else:
+                raise ValueError("Invalid format for configs")
+                
+        return configs
 
 #- - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - #
 
@@ -124,23 +138,27 @@ class metasurface:
         
 #- - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - #
 
-    def send_configuration(self, config=None, print_messages = False):
+    def send_configuration(self, configs=None, print_messages = False):
         
-        if config is not None:
+        configs = self.check_configs_format(configs)
+        
+        bytes_to_send = [len(configs)]
+        
+        for config in configs:
+        
             self.set_config(config)
+        
+            for reg in range(12):
+
+                byte = 0
+                for bit in range(8):
+
+                    if self.config_pin_ordered[reg*8 + bit]:
+                        byte |= (1 << (7-bit))
+
+                bytes_to_send.append(byte)
             
-        bytes_to_send = []
-        
-        for reg in range(12):
-
-            byte = 0
-            for bit in range(8):
-
-                if self.config_pin_ordered[reg*8 + bit]:
-                    byte |= (1 << (7-bit))
-
-            bytes_to_send.append(byte)
-        
+        print(f"Nb bytes to send {len(bytes_to_send)}")
         self.ser.write(bytearray(bytes_to_send))
         
         ack = self.ser.read(1)
@@ -178,59 +196,72 @@ class metasurface:
         
 #- - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - #
 
-    def intermediate_configs(self, config, plot=False):
-        
-        config = np.array(config)
+    def intermediate_configs(self, configs, plot=False):
     
-        # calculate in which order the elements are sent to the shift registers
-        order_shift_reg = np.reshape(config[self.idx_order_shift], (12, 8))
+        configs = self.check_configs_format(configs)
         
-        configs_interm = np.array([[False]*9]*96)
-        configs_interm[:,0] = self.config
+        nb_configs = len(configs)
         
-        for n in range(8):
-            # shift the indexes
-            configs_interm[self.idx_shift_next_new, n+1] = \
-                configs_interm[self.idx_shift_next_prev, n]
+        last_config = self.config
+        all_config_interm = np.array([[False]*(nb_configs*8+1)]*self.nb_cells)
+        all_config_interm[:,0] = last_config
+        
+        for idx, config in enumerate(configs):
+        
+            config = np.array(config)
+        
+            # calculate in which order the elements are sent to the shift registers
+            order_shift_reg = np.reshape(config[self.idx_order_shift], (12, 8))
+            
+            configs_interm = np.array([[False]*9]*self.nb_cells)
+            configs_interm[:,0] = last_config
+            
+            for n in range(8):
+                # shift the indexes
+                configs_interm[self.idx_shift_next_new, n+1] = \
+                    configs_interm[self.idx_shift_next_prev, n]
+                    
+                configs_interm[self.idx_new, n+1] = order_shift_reg[:,n]
                 
-            configs_interm[self.idx_new, n+1] = order_shift_reg[:,n]
-            
-        if plot:
-            
-            # --- Split into 9 column arrays and reshape each to (8, 12) ---
-            columns = [configs_interm[:, i].reshape(8, 12) for i in range(9)]
-            
-            titles = ["Initial config"] + [f"Step {i}" for i in range(1, 9)]
-            
-            # Colormap: background color for False, accent for True
-            cmap = mcolors.ListedColormap(["#e8e8e8", "#2d6a9f"])  # light grey / steel blue
-
-     
-            fig, axes = plt.subplots(3, 3, figsize=(10, 8))
-            fig.patch.set_facecolor("#f5f5f5")
-             
-            for ax, data, title in zip(axes.flat, columns, titles):
-                ax.imshow(data, cmap=cmap, interpolation="nearest", 
-                          vmin=0, vmax=1)
-                ax.set_title(title, fontsize=10, fontweight="bold", pad=6)
+            last_config = configs_interm[:,-1]
+            all_config_interm[:,(1 + idx * 8):(1 + (idx+1) * 8)] = configs_interm[:,1:]
                 
-                # Grid lines between cells
-                ax.set_xticks(np.arange(-0.5, data.shape[1], 1), minor=True)
-                ax.set_yticks(np.arange(-0.5, data.shape[0], 1), minor=True)
-                ax.grid(which="minor", color="black", linewidth=0.8)
-                ax.tick_params(which="both", bottom=False, left=False,
-                               labelbottom=False, labelleft=False)
+            if plot:
+                
+                # --- Split into 9 column arrays and reshape each to (8, 12) ---
+                columns = [configs_interm[:, i].reshape(8, 12) for i in range(9)]
+                
+                titles = ["Initial config"] + [f"Step {i}" for i in range(1, 9)]
+                
+                # Colormap: background color for False, accent for True
+                cmap = mcolors.ListedColormap(["#e8e8e8", "#2d6a9f"])  # light grey / steel blue
 
-             
-            plt.suptitle("Boolean Array States", fontsize=13, 
-                         fontweight="bold", y=1.01)
-            plt.tight_layout()
-            # plt.savefig("bool_array_visualization.png", dpi=150, bbox_inches="tight",
-            # facecolor=fig.get_facecolor())
+         
+                fig, axes = plt.subplots(3, 3, figsize=(10, 8))
+                fig.patch.set_facecolor("#f5f5f5")
+                 
+                for ax, data, title in zip(axes.flat, columns, titles):
+                    ax.imshow(data, cmap=cmap, interpolation="nearest", 
+                              vmin=0, vmax=1)
+                    ax.set_title(title, fontsize=10, fontweight="bold", pad=6)
+                    
+                    # Grid lines between cells
+                    ax.set_xticks(np.arange(-0.5, data.shape[1], 1), minor=True)
+                    ax.set_yticks(np.arange(-0.5, data.shape[0], 1), minor=True)
+                    ax.grid(which="minor", color="black", linewidth=0.8)
+                    ax.tick_params(which="both", bottom=False, left=False,
+                                   labelbottom=False, labelleft=False)
 
-            plt.show(block=False)
+                 
+                plt.suptitle("Boolean Array States", fontsize=13, 
+                             fontweight="bold", y=1.01)
+                plt.tight_layout()
+                # plt.savefig("bool_array_visualization.png", dpi=150, bbox_inches="tight",
+                # facecolor=fig.get_facecolor())
 
-        return configs_interm
+                plt.show(block=False)
+
+        return all_config_interm
         
 #- - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - #
 

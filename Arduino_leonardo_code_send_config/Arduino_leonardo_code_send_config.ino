@@ -1,7 +1,7 @@
 const int NUM_REG = 12;
-// byte registers[NUM_REG];
-unsigned long start;
-unsigned long duration;
+const int MAX_CONFIGS = 128;
+
+uint8_t allData[MAX_CONFIGS * NUM_REG];
 
 void setup() {
   // put your setup code here, to run once:
@@ -34,32 +34,32 @@ void setup() {
 
 void loop() {
   if (Serial.available() >= 1) {
-    uint8_t numConfigs = Serial.read();
-    static uint8_t allData[128 * NUM_REG];
-    while (Serial.available() < numConfigs * NUM_REG);
-    Serial.readBytes(allData, numConfigs * NUM_REG);
 
-    for (uint8_t c = 0; c < numConfigs; c++) {
-        
-        // while (Serial.available() < NUM_REG); // wait for full block
+    uint16_t numConfigs = Serial.read();
 
-
-        // registers[0] = Serial.read(); 
-        // registers[1] = Serial.read(); 
-        // registers[2] = Serial.read(); 
-        // registers[3] = Serial.read(); 
-        // registers[4] = Serial.read(); 
-        // registers[5] = Serial.read(); 
-        // registers[6] = Serial.read(); 
-        // registers[7] = Serial.read(); 
-        // registers[8] = Serial.read(); 
-        // registers[9] = Serial.read(); 
-        // registers[10] = Serial.read(); 
-        // registers[11] = Serial.read(); 
-
-        writeRegisters(&allData[c * NUM_REG]);
-
+    if (numConfigs > MAX_CONFIGS)
+    {
+        Serial.write(0x15); // NAK
+        return;
     }
+
+    uint16_t totalBytes = (uint16_t)numConfigs * NUM_REG;
+    uint16_t received = 0;
+
+    while (received < totalBytes)
+    {
+        received += Serial.readBytes(
+            allData + received,
+            totalBytes - received
+        );
+    }
+
+    // Replay from SRAM at full speed
+    for (uint8_t c = 0; c < numConfigs; c++)
+    {
+        writeRegisters(&allData[c * NUM_REG]);
+    }
+
     Serial.write(0x06); // ACK byte
   }
 }

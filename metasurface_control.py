@@ -94,7 +94,12 @@ class metasurface:
     
         """Check if the configurations are placed in a list, and if not correct it"""
         
-        if not isinstance(configs, list):
+        # check if the list is the config instead of a list of configs
+        if isinstance(configs, list):
+            if not isinstance(configs[0], (list, np.ndarray)):
+                configs = [np.array(configs)]
+            
+        else:
             if isinstance(configs, np.ndarray) and configs.shape == (96,):
                 configs = [configs]
             else:
@@ -158,7 +163,7 @@ class metasurface:
 
                 bytes_to_send.append(byte)
             
-        print(f"Nb bytes to send {len(bytes_to_send)}")
+#        print(f"Nb bytes to send {len(bytes_to_send)}")
         self.ser.write(bytearray(bytes_to_send))
         
         ack = self.ser.read(1)

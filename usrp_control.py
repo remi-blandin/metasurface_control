@@ -1,9 +1,9 @@
 import uhd
 import numpy as np
 import threading
-import queue
 import time
 from scipy.signal import find_peaks
+import matplotlib.pyplot as plt
 
 __all__ = ["usrp"]
 
@@ -349,17 +349,19 @@ class usrp:
 
         if idx >= num_samples:
             return self.rx_buffer[idx-num_samples:idx].copy()
+#            ,self.last_packet_time
 
         else:
             return np.concatenate([
                 self.rx_buffer[self.buffer_size-(num_samples-idx):],
                 self.rx_buffer[:idx]
             ])
+#            ,self.last_packet_time
             
 #- - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - #
 
     def extract_steps(self, signal, window=10, var_threshold_factor=10.0, margin=30,
-        nb_steps = 8):
+        nb_steps = 8, plot=False, print_summary=False):
     
         """
         Automatically locate the region of a signal that contains steps,
@@ -437,23 +439,154 @@ class usrp:
         end   = min(n - 1, breakpoints[-1] + margin)
         
         active = signal[start:end + 1]
-        signal = signal[start:end + 1]
-        n_act = len(signal)
+        signal_act = signal[start:end + 1]
+        n_act = len(signal_act)
         breakpoints = breakpoints - start - 1
         
         edges = [0] + breakpoints
         steps = []
         for a, b in zip(edges[:-1], edges[1:]):
-            seg = signal[a:b]
+            seg = signal_act[a:b]
             steps.append({"start": a, "end": b, "mean": np.median(seg), 
             "std": np.real(seg).std() + 1j * np.imag(seg).std(), "n": len(seg)})
 
         mean_line = np.zeros(n_act, dtype = np.complex64)
         for s in steps:
             mean_line[s["start"]:s["end"]] = s["mean"]
+            
+        if plot:
+            pass
+            self.plot_step_detection(signal, start, end, roll_var, breakpoints, 
+    steps, mean_line, var_threshold_factor)
+    
+        if print_summary:
+            self.print_summary_step_detection(steps, abs_offset=0, mode="dual", ch1_label="I", ch2_label="Q")
 
         return start, end, roll_var, breakpoints, steps, mean_line
         
+#- - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - #
+
+    def plot_step_detection(self, signal, start, end, roll_var, breakpoints, 
+    steps, mean_line, var_threshold_factor):
+    
+        active = signal[start:end + 1]
+
+        fig = plt.figure(figsize=(13, 9))
+        gs = fig.add_gridspec(3, 2, height_ratios=[1.2, 2, 1], hspace=0.45, wspace=0.3)
+
+        # Top-left: full signal with detected region highlighted
+        ax_full = fig.add_subplot(gs[0, :])
+        x_full = np.arange(len(signal))
+        ax_full.plot(x_full, np.real(signal), color="#888780", linewidth=0.6, alpha=0.7)
+        ax_full.plot(x_full, np.imag(signal), color="red", linewidth=0.6, alpha=0.7)
+        ax_full.axvspan(start, end, color="#185FA5", alpha=0.15, label="Active region")
+        ax_full.axvline(start, color="#185FA5", linewidth=1.2, linestyle="--")
+        ax_full.axvline(end,   color="#185FA5", linewidth=1.2, linestyle="--")
+        ax_full.set_title("Full signal — active region highlighted", fontsize=11)
+        ax_full.legend(fontsize=9, loc="upper right")
+        ax_full.spines[["top", "right"]].set_visible(False)
+        ax_full.grid(axis="y", color="gray", alpha=0.12, linewidth=0.5)
+
+        # Middle-left: rolling variance with threshold line
+        ax_var = fig.add_subplot(gs[1, 0])
+        ax_var.plot(x_full, roll_var, color="#D85A30", linewidth=0.8, label="Rolling variance")
+        baseline_var = np.percentile(roll_var, 20)
+        threshold = baseline_var * var_threshold_factor
+        ax_var.axhline(threshold, color="#D85A30", linewidth=1.5, linestyle="--",
+                       label=f"Threshold (×{var_threshold_factor})")
+        ax_var.axvspan(start, end, color="#185FA5", alpha=0.1)
+        ax_var.set_title("Rolling variance (region detector)", fontsize=11)
+        ax_var.legend(fontsize=9)
+        ax_var.spines[["top", "right"]].set_visible(False)
+        ax_var.grid(axis="y", color="gray", alpha=0.12, linewidth=0.5)
+
+        # Middle-right: zoomed active region with step means
+        ax_zoom = fig.add_subplot(gs[1, 1])
+        x_active = np.arange(len(active))
+        ax_zoom.plot(x_active, np.real(active), color="#888780", linewidth=0.9, 
+            alpha=0.8, label="Signal")
+        ax_zoom.plot(x_active, np.imag(active), color="red", linewidth=0.9, 
+            alpha=0.8, label="Signal")
+        ax_zoom.plot(x_active, np.real(mean_line), color="#185FA5", linewidth=2.5, label="Step mean")
+        ax_zoom.plot(x_active, np.imag(mean_line), color="red", linewidth=2.5, label="Step mean")
+        bp_plotted = False
+        for bp in breakpoints:
+            ax_zoom.axvline(bp, color="#D85A30", linewidth=1.5, linestyle="--",
+                            label="Breakpoint" if not bp_plotted else None)
+            bp_plotted = True
+        ax_zoom.set_title("Active region — step segmentation", fontsize=11)
+    #    ax_zoom.legend(fontsize=9, loc="upper right")
+        ax_zoom.spines[["top", "right"]].set_visible(False)
+        ax_zoom.grid(axis="y", color="gray", alpha=0.12, linewidth=0.5)
+
+        # Bottom: residuals of active region
+        ax_res = fig.add_subplot(gs[2, :])
+        residuals = active - mean_line
+        ax_res.plot(x_active, np.real(residuals), color="#888780", linewidth=0.6, alpha=0.8)
+        ax_res.plot(x_active, np.imag(residuals), color="red", linewidth=0.6, alpha=0.8)
+        ax_res.axhline(0, color="#185FA5", linewidth=1, linestyle="--", alpha=0.6)
+        ax_res.set_title("Residuals (active region)", fontsize=11)
+        ax_res.set_xlabel("Sample (within active region)")
+        ax_res.spines[["top", "right"]].set_visible(False)
+        ax_res.grid(axis="y", color="gray", alpha=0.12, linewidth=0.5)
+
+        fig.suptitle("Step signal extraction pipeline", fontsize=13, y=1.01)
+        
+        plt.tight_layout()
+        plt.show(block=False)
+        
+#- - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - #
+        
+    def print_summary_step_detection(self, steps, abs_offset=0, mode="real", 
+        ch1_label="Ch1", ch2_label="Ch2"):
+        
+        """
+        Print a step summary table.
+
+        mode : "real"    — single real channel
+               "complex" — complex mean/std (magnitude + phase)
+               "dual"    — two synchronized channels
+        """
+
+        if mode == "real":
+            print(f"\n{'Step':>5}  {'Start':>7}  {'End':>7}  {'N':>7}  {'Mean':>10}  {'Std':>10}")
+            print("─" * 48)
+            for i, s in enumerate(steps, 1):
+                a = abs_offset + s["start"]
+                b = abs_offset + s["end"] - 1
+                print(f"{i:>5}  {a:>7}  {b:>7}  {s['n']:>7}  {s['mean']:>10.4f}  {s['std']:>10.4f}")
+
+        elif mode == "complex":
+            # steps contains dicts with complex "mean" and "std"
+            print(f"\n{'Step':>5}  {'Start':>7}  {'End':>7}  {'N':>7}"
+                  f"  {'Re(mean)':>10}  {'Im(mean)':>10}"
+                  f"  {'|mean|':>8}  {'∠mean(°)':>10}"
+                  f"  {'|std|':>8}")
+            print("─" * 85)
+            for i, s in enumerate(steps, 1):
+                a    = abs_offset + s["start"]
+                b    = abs_offset + s["end"] - 1
+                m    = s["mean"]   # complex
+                std  = s["std"]    # real (magnitude of std)
+                print(f"{i:>5}  {a:>7}  {b:>7}  {s['n']:>7}"
+                      f"  {m.real:>10.4f}  {m.imag:>10.4f}"
+                      f"  {abs(m):>8.4f}  {np.degrees(np.angle(m)):>10.2f}"
+                      f"  {std:>8.4f}")
+
+        elif mode == "dual":
+            print(f"\n{'Step':>5}  {'Start':>7}  {'End':>7}  {'N':>7}"
+                  f"  {ch1_label+' median':>12}  {ch1_label+' std':>10}"
+                  f"  {ch2_label+' median':>12}  {ch2_label+' std':>10}")
+            print("─" * (62 + len(ch1_label) + len(ch2_label)))
+            for i, s in enumerate(steps, 1):
+                a = abs_offset + s["start"]
+                b = abs_offset + s["end"] - 1
+                m   = s["mean"]   # complex
+                std = s["std"]    # complex
+                print(f"{i:>5}  {a:>7}  {b:>7}  {s['n']:>7}"
+                      f"  {m.real:>12.4f}  {std.real:>10.4f}"
+                      f"  {m.imag:>12.4f}  {std.imag:>10.4f}")
+
 #- - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - #
 
     def robust_periodic_event_detection(self, detections, nb_samples, period=30, 

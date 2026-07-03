@@ -321,7 +321,7 @@ class usrp:
         
 #- - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - #
 
-    def get_measurement(self, num_samples, from_time_now=True):
+    def get_measurement(self, num_samples, from_time_now=True, timeout=1.0):
 
         if num_samples > self.buffer_size:
             raise ValueError("Request exceeds ring buffer size")
@@ -334,8 +334,16 @@ class usrp:
             # a saturated TX it can time out ("fifo ctrl timed out looking for acks")
             # on single-link transports (e.g. N2xx over 1 GbE, or when the host NIC is
             # a USB-Ethernet adapter). Counting samples keeps the measurement robust.
+            # `timeout` is a wall-clock safety net: it bounds the wait so the call
+            # raises instead of spinning forever if the RX stream is not advancing
+            # (start_rx not running, RX thread died, device stopped).
             target = self.total_rx_samples + num_samples
+            t_start = time.perf_counter()
             while self.total_rx_samples < target:
+                if time.perf_counter() - t_start > timeout:
+                    raise RuntimeError(
+                        "get_measurement timed out waiting for samples; "
+                        "is the RX stream running (start_rx)?")
                 time.sleep(0.0001)
 
         idx = self.write_idx

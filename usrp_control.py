@@ -322,41 +322,32 @@ class usrp:
 #- - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - #
 
     def get_measurement(self, num_samples, from_time_now=True):
-    
+
         if num_samples > self.buffer_size:
             raise ValueError("Request exceeds ring buffer size")
-            
+
         if from_time_now:
-            min_start_time = self.get_time_now()
-        else:
-            min_start_time = 0.
-            
-        while (self.last_packet_time < min_start_time) or \
-            (self.total_rx_samples - self.last_meas_nb_rx_samples < num_samples):
-#            print('loop')
-#            print(f"Time diff = {self.last_packet_time < min_start_time}")
-#            print(f"Nb smp diff = {self.total_rx_samples - self.last_meas_nb_rx_samples}")
-            self.last_meas_nb_rx_samples = self.total_rx_samples
-            time.sleep(0.0001)
-            
-#        print('Measurement extraction')
-#        print(f"Time diff = {self.last_packet_time < min_start_time}")
-#        print(f"Nb smp diff = {self.total_rx_samples - self.last_meas_nb_rx_samples}")
-            
-        self.last_meas_nb_rx_samples = self.total_rx_samples
-    
+            # Wait for `num_samples` NEW samples to arrive after this call, relying
+            # only on the RX sample counter maintained by the streaming thread.
+            # This issues NO control transaction, unlike a get_time_now()-based wait.
+            # get_time_now() shares the Ethernet link with the sample stream, so under
+            # a saturated TX it can time out ("fifo ctrl timed out looking for acks")
+            # on single-link transports (e.g. N2xx over 1 GbE, or when the host NIC is
+            # a USB-Ethernet adapter). Counting samples keeps the measurement robust.
+            target = self.total_rx_samples + num_samples
+            while self.total_rx_samples < target:
+                time.sleep(0.0001)
+
         idx = self.write_idx
 
         if idx >= num_samples:
             return self.rx_buffer[idx-num_samples:idx].copy()
-#            ,self.last_packet_time
 
         else:
             return np.concatenate([
                 self.rx_buffer[self.buffer_size-(num_samples-idx):],
                 self.rx_buffer[:idx]
             ])
-#            ,self.last_packet_time
             
 #- - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - #
 

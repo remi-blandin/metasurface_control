@@ -1,5 +1,7 @@
 const int NUM_REG = 12;
 const int MAX_CONFIGS = 128;
+// #define CMD_SEND 0x00
+// #define CMD_LOOP 0x01
 
 uint8_t allData[MAX_CONFIGS * NUM_REG];
 
@@ -33,8 +35,9 @@ void setup() {
 }
 
 void loop() {
-  if (Serial.available() >= 1) {
+  if (Serial.available() >= 2) {
 
+    uint8_t cmd = Serial.read();
     uint16_t numConfigs = Serial.read();
 
     if (numConfigs > MAX_CONFIGS)
@@ -54,13 +57,20 @@ void loop() {
         );
     }
 
-    // Replay from SRAM at full speed
-    for (uint8_t c = 0; c < numConfigs; c++)
-    {
-        writeRegisters(&allData[c * NUM_REG]);
-    }
-
     Serial.write(0x06); // ACK byte
+
+    while (true) {
+        // Replay from SRAM at full speed
+        for (uint8_t c = 0; c < numConfigs; c++)
+        {
+            writeRegisters(&allData[c * NUM_REG]);
+        }
+        if (Serial.available() >= 1 || cmd ) {
+            break;
+        }
+        delayMicroseconds(20);
+    }
+    
   }
 }
 
@@ -105,7 +115,6 @@ void writeRegisters(uint8_t* registers)
 
     for(uint8_t i = 0; i < 8; i++)
     {
-        // delay(2000);
         
         uint8_t pd = pdBase;
         uint8_t pb = pbBase;

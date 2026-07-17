@@ -143,11 +143,14 @@ class metasurface:
         
 #- - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - #
 
-    def send_configuration(self, configs=None, print_messages = False):
+    def send_configuration(self, configs=None, print_messages = False, 
+        loop = False):
         
         configs = self.check_configs_format(configs)
         
-        bytes_to_send = [len(configs)]
+        # it is necessary to take the opposit of loop so that the condition 
+        # of not breaking the loop is sent to the Arduino
+        bytes_to_send = [not(loop), len(configs)]
         
         for config in configs:
         
@@ -162,8 +165,9 @@ class metasurface:
                         byte |= (1 << (7-bit))
 
                 bytes_to_send.append(byte)
+                
+        
             
-#        print(f"Nb bytes to send {len(bytes_to_send)}")
         self.ser.write(bytearray(bytes_to_send))
         
         ack = self.ser.read(1)

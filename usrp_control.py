@@ -11,7 +11,8 @@ class usrp:
 
     """A class to communicate with an USRP"""
     
-    def __init__(self, center_freq=5.2e9, gain_RX=20, gain_TX=20):
+    def __init__(self, center_freq=5.2e9, gain_RX=20, gain_TX=20,
+        buffer_size = 2**18):
     
         self.usrp = uhd.usrp.MultiUSRP()
         print(self.usrp.get_mboard_name())
@@ -27,7 +28,7 @@ class usrp:
         # RING BUFFER ADDITIONS
         # =========================
         
-        self.buffer_size = 2**18  # ~260k samples (adjust as needed)
+        self.buffer_size = buffer_size
         self.rx_buffer = np.zeros(self.buffer_size, dtype=np.complex64)
         self.write_idx = 0
         self.rx_running = False

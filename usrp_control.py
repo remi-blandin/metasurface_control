@@ -12,17 +12,17 @@ class usrp:
     """A class to communicate with an USRP"""
     
     def __init__(self, center_freq=5.2e9, gain_RX=20, gain_TX=20,
-        buffer_size = 2**18):
+        buffer_size = 2**18, virtual = False):
     
-        self.usrp = uhd.usrp.MultiUSRP()
-        print(self.usrp.get_mboard_name())
-        
         self.sample_rate = 10e6
         self.gain_RX = gain_RX
         self.gain_TX = gain_TX
         self.center_freq = center_freq
         
-        self.setup_usrp()
+        if not(virtual):
+            self.usrp = uhd.usrp.MultiUSRP()
+            print(self.usrp.get_mboard_name())
+            self.setup_usrp()
         
         # =========================
         # RING BUFFER ADDITIONS

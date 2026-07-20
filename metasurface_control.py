@@ -13,19 +13,22 @@ class metasurface:
     
     """A class to communicate with a metasurface easily"""
     
-    def __init__(self, PORT = None, BAUD = 1000000):
+    def __init__(self, PORT = None, BAUD = 1000000, virtual=False):
         
-        if PORT is None:
-            self.PORT = self.find_arduino_port()
-            if self.PORT is None:
-
-                sys.exit("Error: No Arduino found. \
-                         Check USB connection and try again.")
-                         
-        else: 
-            self.PORT = PORT
+        if not(virtual):
+            if PORT is None:
+                self.PORT = self.find_arduino_port()
+                if self.PORT is None:
+    
+                    sys.exit("Error: No Arduino found. \
+                             Check USB connection and try again.")
+                             
+            else: 
+                self.PORT = PORT
         
         self.BAUD = BAUD
+        
+        self.nb_cells = 96
         
         # this is the mapping between the indexes of pins of the connector and 
         # the cells of the metasurface
@@ -59,12 +62,12 @@ class metasurface:
         self.idx_order_shift = np.fliplr(self.idx_shift_next).flatten()
         self.idx_new = self.idx_shift_next[:, 0]
         
-        self.ser = serial.Serial(self.PORT, BAUD)
-        time.sleep(2)  
-        
-        self.nb_cells = 96
-        self.set_config([False] * self.nb_cells)
-        self.ser.reset_input_buffer()
+        if not(virtual):
+            self.ser = serial.Serial(self.PORT, BAUD)
+            time.sleep(2)  
+            
+            self.set_config([False] * self.nb_cells)
+            self.ser.reset_input_buffer()
         
 #- - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - #
 
